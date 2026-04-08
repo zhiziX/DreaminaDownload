@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "即梦Dreamina去水印下载",
+  "version": "1.0.0",
+  "description": "即梦/Dreamina 图片视频去水印下载工具",
+  "homepage_url": "https://github.com/zhiziX/DreaminaDownload",
+  "permissions": ["activeTab", "downloads", "storage", "declarativeNetRequestWithHostAccess"],
+  "host_permissions": [
+    "https://*/*",
+    "https://*.jimeng.jianying.com/*",
+    "https://dreamina.capcut.com/*",
+    "https://*.dreamina.capcut.com/*",
+    "https://mweb-api-sg.capcut.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "referer-rules",
+        "enabled": true,
+        "path": "rules/referer.json"
+      }
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jimeng.jianying.com/*",
+        "https://*.jimeng.jianying.com/*",
+        "https://dreamina.capcut.com/*",
+        "https://*.dreamina.capcut.com/*"
+      ],
+      "js": ["page-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://jimeng.jianying.com/*",
+        "https://*.jimeng.jianying.com/*",
+        "https://dreamina.capcut.com/*",
+        "https://*.dreamina.capcut.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "即梦Dreamina去水印下载"
+  }
+}

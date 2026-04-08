@@ -1,0 +1,186 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://jimeng.jianying.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||vlabvod.com/",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "media", "image", "other"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://jimeng.jianying.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||byteimg.com/",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "media", "image", "other"]
+    }
+  },
+  {
+    "id": 3,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://jimeng.jianying.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||zijiecdn.com/",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "media", "image", "other"]
+    }
+  },
+  {
+    "id": 4,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://jimeng.jianying.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||bytecdn.com/",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "media", "image", "other"]
+    }
+  },
+  {
+    "id": 5,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://jimeng.jianying.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||pstatp.com/",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "media", "image", "other"]
+    }
+  },
+  {
+    "id": 6,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://jimeng.jianying.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||faceu-img.com/",
+      "resourceTypes": ["main_frame", "sub_frame", "xmlhttprequest", "media", "image", "other"]
+    }
+  },
+  {
+    "id": 7,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://dreamina.capcut.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||ibyteimg.com/",
+      "resourceTypes": ["xmlhttprequest", "media", "image", "other"],
+      "initiatorDomains": ["dreamina.capcut.com"]
+    }
+  },
+  {
+    "id": 8,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://dreamina.capcut.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||ibytedtos.com/",
+      "resourceTypes": ["xmlhttprequest", "media", "image", "other"],
+      "initiatorDomains": ["dreamina.capcut.com"]
+    }
+  },
+  {
+    "id": 9,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://dreamina.capcut.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||byteimg.com/",
+      "resourceTypes": ["xmlhttprequest", "media", "image", "other"],
+      "initiatorDomains": ["dreamina.capcut.com"]
+    }
+  },
+  {
+    "id": 10,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "referer",
+          "operation": "set",
+          "value": "https://dreamina.capcut.com/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||capcut.com/",
+      "resourceTypes": ["xmlhttprequest", "media", "image", "other"],
+      "initiatorDomains": ["dreamina.capcut.com"]
+    }
+  }
+]
