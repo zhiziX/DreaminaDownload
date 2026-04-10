@@ -1,111 +1,110 @@
-# 即梦Dreamina去水印下载
+# 即梦 / Dreamina 去水印下载
 
-一个轻量级的 Chrome 浏览器扩展，用于从即梦（Jimeng）和 Dreamina 平台下载无水印的图片和视频。
+Chrome / Edge 浏览器扩展，一键下载即梦和 Dreamina 平台的无水印图片与视频。
 
-> 💡 **需要更多平台支持？** 访问 [智子X](https://zhizix.com) 获取支持 B站、抖音、小红书、快手等多平台的完整解析工具。
+> 需要更多平台支持？访问 [zhizix.com](https://zhizix.com) 获取 B站、抖音、小红书、快手等多平台解析工具。
 
 ---
 
-## ⚠️ 免责声明
+## 免责声明
 
 **本工具仅供学习和研究使用，请勿用于商业用途。**
 
 - 本扩展仅解析页面中已公开的资源链接，不涉及任何破解或非法访问行为
-- 使用本工具下载的内容版权归原作者所有
-- 用户应遵守即梦和 Dreamina 平台的服务条款和版权政策
-- 下载的内容仅供个人学习、研究使用，禁止用于商业用途或二次传播
-- 因使用本工具产生的任何法律纠纷与开发者无关，使用者需自行承担相关责任
-
-**请尊重原创作者的劳动成果，合理使用本工具。**
+- 下载内容的版权归原作者所有，禁止用于商业用途或二次传播
+- 用户应遵守即梦和 Dreamina 平台的服务条款
+- 因使用本工具产生的任何法律纠纷与开发者无关
 
 ---
 
-## ✨ 功能特点
+## 功能
 
-- 🎯 **精准解析**：自动识别即梦/Dreamina详情页的图片和视频资源
-- 🚫 **去水印下载**：优先获取无水印的高清原图和视频
-- 🎨 **简洁界面**：通过浏览器扩展弹窗一键下载
-- ⚡ **快速稳定**：直接解析页面已暴露的资源链接，无需额外请求
-- 🔄 **SPA适配**：完美支持单页应用的路由切换和详情页覆盖层
+- **去水印下载** — 自动获取无水印的高清原图和原画视频
+- **双模式解析** — 快速去水印下载 + 原画解析下载（即梦主站详情页）
+- **浮动下载按钮** — 详情页内直接显示下载入口，无需打开扩展弹窗
+- **SPA 适配** — 完整支持即梦单页应用的路由切换和详情弹窗
+- **多页面支持** — 即梦图片/视频详情页、Dreamina 图片/视频详情页、生成页
 
-## 📦 安装方法
+## 支持的页面
 
-### 方式一：从源码安装（推荐）
+| 平台 | 类型 | 解析能力 |
+|------|------|---------|
+| 即梦主站 | 图片详情页 | 快速下载（SPA 画质） + 原画解析（弹tab获取原图） |
+| 即梦主站 | 视频详情页 | 快速下载（标准画质） + 原画解析（弹tab获取原画） |
+| 即梦主站 | 生成页 | 去水印下载 |
+| Dreamina | 图片详情页 | 原图下载 |
+| Dreamina | 视频详情页 | 原画视频下载 |
+| Dreamina | 生成页 | 去水印下载 |
 
-1. 下载本项目代码：
+## 安装
+
+### Chrome 网上应用店（推荐）
+
+即将上架，敬请期待。
+
+### Edge 外接程序商店
+
+即将上架，敬请期待。
+
+### 从源码安装
+
+1. 克隆项目：
    ```bash
    git clone https://github.com/zhiziX/DreaminaDownload.git
    ```
 
-2. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+2. 打开浏览器扩展管理页：
+   - Chrome：`chrome://extensions/`
+   - Edge：`edge://extensions/`
 
-3. 开启右上角的"开发者模式"
+3. 开启「开发者模式」
 
-4. 点击"加载已解压的扩展程序"
+4. 点击「加载已解压的扩展程序」，选择项目根目录
 
-5. 选择本项目的根目录
+## 使用
 
-6. 安装完成！扩展图标会出现在浏览器工具栏
+1. 打开即梦或 Dreamina 的作品详情页
+2. 页面上会自动出现浮动下载按钮，点击即可下载
+3. 也可以点击浏览器工具栏的扩展图标，查看解析结果并下载
+4. 即梦主站详情页提供两个按钮：
+   - **快速去水印下载** — 直接下载当前页面解析到的资源
+   - **原画解析下载** — 自动弹出标签页获取原始画质资源，完成后自动关闭
 
-### 方式二：从 Release 安装
+## 项目结构
 
-1. 前往 [Releases](https://github.com/zhiziX/DreaminaDownload/releases) 页面
-2. 下载最新版本的 `.zip` 文件
-3. 解压后按照"方式一"的步骤 2-6 进行安装
+```
+├── manifest.json        # 扩展配置
+├── background.js        # Service Worker，处理下载和弹tab解析
+├── content.js           # 内容脚本，解析页面媒体资源
+├── page-bridge.js       # 页面主世界脚本，捕获 SPA 路由数据
+├── popup.html / popup.js # 扩展弹窗界面
+├── rules/referer.json   # 声明式网络请求规则（Referer 头）
+└── icons/               # 扩展图标
+```
 
-## 🚀 使用方法
+## 权限说明
 
-1. 访问即梦或 Dreamina 的作品详情页：
-   - 即梦：`https://jimeng.jianying.com/ai-tool/work-detail/...`
-   - Dreamina：`https://dreamina.capcut.com/ai-tool/image/...` 或 `/video/...`
+| 权限 | 用途 |
+|------|------|
+| `activeTab` | 读取当前标签页内容以解析媒体资源 |
+| `downloads` | 触发浏览器下载 |
+| `storage` | 保存扩展设置（仅本地） |
+| `declarativeNetRequestWithHostAccess` | 设置下载请求的 Referer 头 |
+| `host_permissions` | 访问即梦和 Dreamina 平台页面 |
 
-2. 点击浏览器工具栏中的扩展图标
+## 贡献
 
-3. 在弹出的窗口中查看解析结果
+欢迎提交 Issue 和 Pull Request。
 
-4. 点击"下载"按钮即可保存到本地
+- 提交 Issue 时请附上浏览器版本、扩展版本和问题页面 URL
+- 提交 PR 前请确保不影响现有页面的解析功能
 
-## 🎯 支持的页面
+## 开源协议
 
-| 平台 | 支持的内容类型 | 页面路径示例 |
-|------|---------------|-------------|
-| 即梦 | 图片 | `/ai-tool/work-detail/<id>?workDetailType=Image` |
-| 即梦 | 视频 | `/ai-tool/work-detail/<id>?workDetailType=AiVideo` |
-| Dreamina | 图片 | `/ai-tool/image/<id>` |
-| Dreamina | 视频 | `/ai-tool/video/<id>` |
+[MIT License](LICENSE)
 
-## 🤝 贡献指南
+## 联系
 
-欢迎提交 Issue 和 Pull Request！
-
-### 提交 Issue
-
-- 请详细描述问题，包括复现步骤
-- 附上浏览器版本和扩展版本信息
-- 如有可能，提供问题页面的 URL
-
-### 提交 PR
-
-- Fork 本项目
-- 创建新的功能分支
-- 提交清晰的 commit 信息
-- 确保代码风格一致
-- 提交 PR 并描述改动内容
-
-## 📄 开源协议
-
-本项目采用 [MIT License](LICENSE) 开源协议。
-
-## 🙏 致谢
-
-- 感谢即梦和 Dreamina 平台提供的优质 AI 创作工具
-- 感谢所有为本项目做出贡献的开发者
-
-## 📮 联系方式
-
-- 项目主页：[https://github.com/zhiziX/DreaminaDownload](https://github.com/zhiziX/DreaminaDownload)
+- 项目主页：[GitHub](https://github.com/zhiziX/DreaminaDownload)
 - 问题反馈：[Issues](https://github.com/zhiziX/DreaminaDownload/issues)
-
----
-
-**再次提醒：请遵守平台规则，尊重原创作者，合理使用本工具。**
+- 更多工具：[zhizix.com](https://zhizix.com)

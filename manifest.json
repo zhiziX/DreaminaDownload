@@ -5,9 +5,9 @@
   "description": "即梦/Dreamina 图片视频去水印下载工具",
   "homepage_url": "https://github.com/zhiziX/DreaminaDownload",
   "icons": {
-    "16": "icons/icon-16.png",
-    "48": "icons/icon-48.png",
-    "128": "icons/icon-128.png"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "permissions": ["activeTab", "downloads", "storage", "declarativeNetRequestWithHostAccess"],
   "host_permissions": [
@@ -54,9 +54,9 @@
   ],
   "action": {
     "default_icon": {
-      "16": "icons/icon-16.png",
-      "48": "icons/icon-48.png",
-      "128": "icons/icon-128.png"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     },
     "default_popup": "popup.html",
     "default_title": "即梦Dreamina去水印下载"

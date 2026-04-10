@@ -28,3 +28,6 @@ _metadata/
 *.zip
 *.crx
 *.pem
+
+# Build artifacts
+temp_package/

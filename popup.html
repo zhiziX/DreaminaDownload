@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智子X 即梦解析</title>
+    <title>智子X 即梦Dreamina解析</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -141,11 +141,12 @@
         .status-inactive { background: #dc2626; }
         .actions {
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             margin-top: 12px;
         }
         .btn {
-            width: 100%;
+            flex: 1;
             border: none;
             border-radius: 10px;
             padding: 10px 12px;
@@ -157,6 +158,16 @@
         }
         .btn-download {
             background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        }
+        .btn-tab-download {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+        }
+        .tab-hint {
+            width: 100%;
+            text-align: center;
+            font-size: 11px;
+            color: #888;
+            margin-top: 6px;
         }
         .media-list {
             display: flex;
@@ -277,7 +288,8 @@
             <div class="media-list" id="mediaList"></div>
             <div class="empty-state" id="emptyState">当前页面没有可下载的解析结果。</div>
             <div class="actions hidden" id="primaryActionWrap">
-                <button class="btn btn-download" id="primaryDownloadBtn">去水印下载</button>
+                <button class="btn btn-download" id="primaryDownloadBtn">快速去水印下载</button>
+                <button class="btn btn-tab-download" id="tabDownloadBtn">原画解析下载</button>
             </div>
         </div>
     </div>

@@ -1,4 +1,3 @@
-// 扩展弹窗逻辑：只展示当前详情页解析到的媒体列表，并提供下载入口。
 const FLOATING_DOWNLOAD_KEY = 'floatingDownloadEnabled';
 
 function getQualityLabel(source, url) {
@@ -38,17 +37,20 @@ class PopupManager {
         this.renderFloatingDownloadToggle();
     }
 
-    // 读取当前活动标签页，后续所有操作都基于这个标签页发送消息。
     async getCurrentTab() {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         this.currentTab = tab || null;
     }
 
-    // 绑定弹窗里的按钮。
     bindEvents() {
         document.getElementById('primaryDownloadBtn')?.addEventListener('click', () => {
             if (this.mediaItems.length === 1) {
                 this.downloadItem(this.mediaItems[0], document.getElementById('primaryDownloadBtn'));
+            }
+        });
+        document.getElementById('tabDownloadBtn')?.addEventListener('click', () => {
+            if (this.mediaItems.length === 1) {
+                this.downloadItemWithTab(this.mediaItems[0], document.getElementById('tabDownloadBtn'));
             }
         });
         document.getElementById('floatingDownloadToggle')?.addEventListener('change', async (event) => {
@@ -94,7 +96,6 @@ class PopupManager {
         chrome.tabs.create({ url });
     }
 
-    // 主动向内容脚本请求当前详情页的最新解析结果。
     async refreshStatus() {
         if (!this.currentTab?.id) {
             this.renderUnsupported('无法识别当前标签页');
@@ -107,7 +108,7 @@ class PopupManager {
         }
 
         try {
-            const response = await chrome.tabs.sendMessage(this.currentTab.id, { action: 'refresh' });
+            const response = await chrome.tabs.sendMessage(this.currentTab.id, { action: 'getStatus' });
             if (!response?.success) {
                 const errorText = response?.error ? `页面脚本异常：${response.error}` : '页面脚本未响应';
                 this.renderUnsupported(errorText);
@@ -115,7 +116,8 @@ class PopupManager {
             }
 
             if (!response.supported) {
-                this.renderUnsupported('当前页面不是详情页');
+                const site = (this.currentTab?.url || '').includes('dreamina.capcut.com') ? 'Dreamina' : '即梦';
+                this.renderUnsupported(`当前页面不是${site}详情页`);
                 return;
             }
 
@@ -130,7 +132,6 @@ class PopupManager {
         }
     }
 
-    // 当当前页面不支持时，显示空状态。
     renderUnsupported(message) {
         this.mediaItems = [];
         this.renderHeader(message, false);
@@ -138,13 +139,11 @@ class PopupManager {
         this.renderList([]);
     }
 
-    // 根据内容脚本返回的页面策略，更新弹窗头部和媒体列表。
     renderStatus(data) {
-        const pageType = data.pageStrategy === 'video'
-            ? '即梦视频详情页'
-            : data.pageStrategy === 'image'
-                ? '即梦图片详情页'
-                : (data.pageStrategyLabel || '即梦详情页');
+        const url = data.pageUrl || this.currentTab?.url || '';
+        const site = url.includes('dreamina.capcut.com') ? 'Dreamina' : '即梦';
+        const mediaLabel = data.pageStrategy === 'video' ? '视频' : '图片';
+        const pageType = `${site}${mediaLabel}详情页`;
         const mediaItems = data.mediaItems || [];
         this.renderHeader(pageType, true);
         this.renderPrimaryAction(mediaItems);
@@ -162,21 +161,56 @@ class PopupManager {
     renderPrimaryAction(mediaItems) {
         const wrapEl = document.getElementById('primaryActionWrap');
         const buttonEl = document.getElementById('primaryDownloadBtn');
+        const tabButtonEl = document.getElementById('tabDownloadBtn');
         if (!wrapEl || !buttonEl) return;
 
         if (mediaItems.length !== 1) {
             wrapEl.classList.add('hidden');
             buttonEl.disabled = false;
             buttonEl.textContent = '去水印下载';
+            if (tabButtonEl) {
+                tabButtonEl.disabled = false;
+                tabButtonEl.textContent = '弹tab解析下载';
+            }
             return;
         }
 
+        const item = mediaItems[0];
+        const jimengUrl = this.currentTab?.url || '';
+        const isJimengDetail = jimengUrl.includes('jimeng.jianying.com')
+            && (item.type === 'image' || item.type === 'video')
+            && !jimengUrl.includes('/ai-tool/generate') && !jimengUrl.includes('/ai-tool/canvas');
+
         wrapEl.classList.remove('hidden');
         buttonEl.disabled = false;
-        buttonEl.textContent = mediaItems[0].type === 'video' ? '去水印下载视频' : '去水印下载图片';
+        buttonEl.textContent = isJimengDetail
+            ? '快速去水印下载'
+            : (item.type === 'video' ? '去水印下载视频' : '去水印下载图片');
+
+        if (tabButtonEl) {
+            if (isJimengDetail) {
+                tabButtonEl.style.display = 'block';
+                tabButtonEl.disabled = false;
+                tabButtonEl.textContent = '原画解析下载';
+            } else {
+                tabButtonEl.style.display = 'none';
+            }
+        }
+
+        let hintEl = wrapEl.querySelector('.tab-hint');
+        if (isJimengDetail) {
+            if (!hintEl) {
+                hintEl = document.createElement('div');
+                hintEl.className = 'tab-hint';
+                hintEl.textContent = '原画解析会自动弹标签页，解析完成自动关闭';
+                wrapEl.appendChild(hintEl);
+            }
+            hintEl.style.display = 'block';
+        } else if (hintEl) {
+            hintEl.style.display = 'none';
+        }
     }
 
-    // 根据解析结果渲染媒体列表。
     renderList(mediaItems) {
         const listEl = document.getElementById('mediaList');
         const emptyEl = document.getElementById('emptyState');
@@ -203,12 +237,18 @@ class PopupManager {
 
             const filename = document.createElement('div');
             filename.className = 'media-url';
-            filename.textContent = item.filename;
+            filename.textContent = (item.filename || '').replace(/\.[^.]+$/, '');
 
             const source = document.createElement('div');
             source.className = 'media-source';
             const qualityLabel = getQualityLabel(item.source, item.url);
-            source.textContent = qualityLabel ? `资源级别：${qualityLabel}` : item.source;
+            const isJimengSpa = this.currentTab?.url?.includes('jimeng.jianying.com')
+                && !this.currentTab?.url?.includes('/ai-tool/generate')
+                && !this.currentTab?.url?.includes('/ai-tool/canvas');
+            const needOriginalHint = isJimengSpa && qualityLabel && qualityLabel !== '原图' && qualityLabel !== '原画视频' && qualityLabel !== '高清原图';
+            source.textContent = qualityLabel
+                ? `资源级别：${qualityLabel}${needOriginalHint ? '（原画解析可获得原始画质资源）' : ''}`
+                : item.source;
 
             meta.appendChild(title);
             meta.appendChild(filename);
@@ -228,7 +268,6 @@ class PopupManager {
         });
     }
 
-    // 通过 background.js 触发浏览器原生下载。
     async downloadItem(item, button) {
         const originalText = button.textContent;
         button.disabled = true;
@@ -242,7 +281,7 @@ class PopupManager {
                 mediaType: item.type,
                 source: item.source,
                 extraImageCandidates: item.type === 'image' ? (item.extraImageCandidates || []) : [],
-                preferBlob: item.type === 'image',
+                preferBlob: false,
                 pageUrl: this.currentTab?.url || ''
             });
 
@@ -253,6 +292,34 @@ class PopupManager {
             button.textContent = '已开始';
         } catch (error) {
             button.textContent = error?.message ? `失败：${error.message.slice(0, 12)}` : '下载失败';
+        }
+
+        setTimeout(() => {
+            button.disabled = false;
+            button.textContent = originalText;
+            this.renderPrimaryAction(this.mediaItems);
+        }, 1500);
+    }
+
+    async downloadItemWithTab(item, button) {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = '弹tab解析中...';
+
+        try {
+            const response = await chrome.runtime.sendMessage({
+                action: 'downloadWithTab',
+                detailUrl: this.currentTab?.url || '',
+                pageUrl: this.currentTab?.url || ''
+            });
+
+            if (!response?.success) {
+                throw new Error(response?.error || '弹tab解析失败');
+            }
+
+            button.textContent = '已开始';
+        } catch (error) {
+            button.textContent = error?.message ? `失败：${error.message.slice(0, 12)}` : '解析失败';
         }
 
         setTimeout(() => {

@@ -28,6 +28,11 @@ class BackgroundService {
                 return;
             }
 
+            if (request.action === 'downloadWithTab') {
+                this.downloadWithTab(request, sendResponse);
+                return;
+            }
+
             if (request.action === 'getDownloadDiagnostics') {
                 const limit = Math.max(1, Math.min(100, Number(request.limit || 20)));
                 sendResponse({
@@ -53,6 +58,89 @@ class BackgroundService {
         }
     }
 
+    async downloadWithTab(request, sendResponse) {
+        const detailUrl = request.detailUrl || request.pageUrl;
+        if (!detailUrl) {
+            sendResponse({ success: false, error: '缺少详情页URL' });
+            return;
+        }
+
+        let tabId = null;
+        let timeoutId = null;
+        let messageListener = null;
+
+        try {
+            const tab = await chrome.tabs.create({
+                url: detailUrl,
+                active: false
+            });
+            tabId = tab.id;
+
+            const result = await new Promise((resolve, reject) => {
+                timeoutId = setTimeout(() => {
+                    reject(new Error('解析超时（30秒）'));
+                }, 30000);
+
+                messageListener = async (message, sender) => {
+                    if (sender.tab?.id !== tabId) return;
+                    if (message.action !== 'tabParseComplete') return;
+
+                    clearTimeout(timeoutId);
+                    chrome.runtime.onMessage.removeListener(messageListener);
+
+                    if (!message.success || !message.mediaItems?.length) {
+                        reject(new Error(message.error || '未解析到媒体'));
+                        return;
+                    }
+
+                    const item = message.mediaItems[0];
+                    try {
+                        const mediaType = item.type || this.detectMediaType(item.url, item.filename);
+                        const downloadResult = mediaType === 'video'
+                            ? await this.downloadDirect(
+                                item.url,
+                                this.buildFilename(item.filename, item.url, { mediaType: 'video' })
+                            )
+                            : await this.downloadImage(item.url, item.filename, {
+                                preferBlob: false,
+                                pageUrl: detailUrl,
+                                source: item.source || 'tab-parse',
+                                extraImageCandidates: item.extraImageCandidates || []
+                            });
+                        resolve({ success: true, ...downloadResult, source: item.source });
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+
+                chrome.runtime.onMessage.addListener(messageListener);
+
+
+                const trySend = (attempt) => {
+                    chrome.tabs.sendMessage(tabId, { action: 'startTabParse' }).catch(() => {
+                        if (attempt < 5) {
+                            setTimeout(() => trySend(attempt + 1), 2000);
+                        }
+                    });
+                };
+                trySend(0);
+            });
+
+            sendResponse(result);
+        } catch (error) {
+            sendResponse({
+                success: false,
+                error: error?.message || '弹tab解析失败'
+            });
+        } finally {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (messageListener) chrome.runtime.onMessage.removeListener(messageListener);
+            if (tabId) {
+                chrome.tabs.remove(tabId).catch(() => {});
+            }
+        }
+    }
+
     async downloadImage(url, filename, { preferBlob = false, pageUrl = '', source = '', extraImageCandidates = [] } = {}) {
         const trace = {
             id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -65,6 +153,32 @@ class BackgroundService {
             directFallbackAttempts: []
         };
         const candidates = this.buildImageCandidateEntries(url, source, extraImageCandidates);
+
+        if (!preferBlob) {
+            for (const candidate of candidates) {
+                try {
+                    const finalFilename = this.buildFilename(filename, candidate.url, { mediaType: 'image' });
+                    const result = await this.downloadDirect(candidate.url, finalFilename);
+                    trace.finishedAt = Date.now();
+                    trace.status = 'success';
+                    trace.winner = {
+                        source: candidate.source,
+                        variant: 'direct',
+                        url: candidate.url,
+                        channel: 'downloads.download'
+                    };
+                    this.recordDownloadTrace(trace);
+                    return { ...result, traceId: trace.id, resolvedUrl: candidate.url, source: candidate.source };
+                } catch (error) {
+                    continue;
+                }
+            }
+            trace.finishedAt = Date.now();
+            trace.status = 'failed';
+            this.recordDownloadTrace(trace);
+            throw this.createError('所有候选都下载失败', { code: 'all-candidates-failed' });
+        }
+
         let lastError = null;
         const directFallbackQueue = [];
         const directFallbackSeen = new Set();
@@ -450,10 +564,16 @@ class BackgroundService {
         if (/byteimg\.com|zijiecdn\.com|bytecdn\.com|pstatp\.com|faceu-img\.com|vlabvod\.com/.test(target)) {
             return 'https://jimeng.jianying.com/';
         }
+        if (/capcut-os.*\.bytedance\.net/.test(target)) {
+            return 'https://dreamina.capcut.com/';
+        }
         return '';
     }
 
     async downloadBlob(blob, filename) {
+        if (typeof URL.createObjectURL !== 'function') {
+            throw this.createError('URL.createObjectURL 不可用', { code: 'no-createObjectURL' });
+        }
         const objectUrl = URL.createObjectURL(blob);
         try {
             const result = await this.downloadDirect(objectUrl, filename);
@@ -561,7 +681,7 @@ class BackgroundService {
     }
 
     buildFilename(filename, url, { mediaType = '', contentType = '' } = {}) {
-        const cleanName = (filename || '').trim().replace(/[\\/:*?"<>|]+/g, '_');
+        const cleanName = (filename || '').trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim();
         const fallbackBase = mediaType === 'video' ? 'jimeng-video' : mediaType === 'image' ? 'jimeng-image' : 'download';
 
         let baseName = cleanName || `${fallbackBase}-${Date.now()}`;
@@ -696,7 +816,6 @@ class BackgroundService {
         if (this.downloadDiagnostics.length > this.maxDiagnostics) {
             this.downloadDiagnostics.length = this.maxDiagnostics;
         }
-        console.warn('[seedance-bg] image-download-trace', payload);
     }
 
 }

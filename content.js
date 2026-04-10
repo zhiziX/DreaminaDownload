@@ -32,6 +32,7 @@ class JimengMediaCollector {
         this.floatingDownloadEnabled = true;
         this.floatingButtonRoot = null;
         this.floatingButtonEl = null;
+        this.floatingTabParseEl = null;
         this.floatingButtonTarget = null;
         this.floatingButtonItem = null;
         this.positionUpdateRaf = 0;
@@ -61,7 +62,6 @@ class JimengMediaCollector {
         }
     }
 
-    // 接收桥接脚本的路由变化通知。
     handleWindowMessage(event) {
         if (event.source !== window) return;
         if (event.data?.type === 'jimeng-page-change') {
@@ -254,7 +254,6 @@ class JimengMediaCollector {
         this.scheduleScan(20);
     }
 
-    // 监听 DOM 变化，详情内容切换后重新扫描媒体。
     setupObserver() {
         this.observer = new MutationObserver(() => {
             this.scheduleScan(300);
@@ -342,7 +341,8 @@ class JimengMediaCollector {
         const existing = document.getElementById(FLOATING_DOWNLOAD_ROOT_ID);
         if (existing) {
             this.floatingButtonRoot = existing;
-            this.floatingButtonEl = existing.querySelector('button');
+            this.floatingButtonEl = existing.querySelector('[data-role="quick"]');
+            this.floatingTabParseEl = existing.querySelector('[data-role="tab-parse"]');
             if (this.floatingButtonEl) return this.floatingButtonEl;
         }
 
@@ -354,26 +354,30 @@ class JimengMediaCollector {
         root.style.zIndex = '2147483647';
         root.style.display = 'none';
         root.style.pointerEvents = 'none';
+        root.style.cssText += 'display:none;gap:6px;';
+
+        const btnStyle = 'pointer-events:auto;border:none;border-radius:999px;padding:10px 16px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;';
 
         const button = document.createElement('button');
         button.type = 'button';
+        button.dataset.role = 'quick';
         button.textContent = '去水印下载';
-        button.style.pointerEvents = 'auto';
-        button.style.border = 'none';
-        button.style.borderRadius = '999px';
-        button.style.padding = '10px 16px';
-        button.style.background = 'linear-gradient(135deg, #2563eb, #1d4ed8)';
-        button.style.color = '#fff';
-        button.style.fontSize = '14px';
-        button.style.fontWeight = '700';
-        button.style.boxShadow = '0 10px 24px rgba(37, 99, 235, 0.28)';
-        button.style.cursor = 'pointer';
+        button.style.cssText = btnStyle + 'background:linear-gradient(135deg,#2563eb,#1d4ed8);box-shadow:0 10px 24px rgba(37,99,235,0.28);';
         button.addEventListener('click', () => this.handleFloatingButtonClick());
 
+        const tabParseBtn = document.createElement('button');
+        tabParseBtn.type = 'button';
+        tabParseBtn.dataset.role = 'tab-parse';
+        tabParseBtn.textContent = '原画解析下载';
+        tabParseBtn.style.cssText = btnStyle + 'background:linear-gradient(135deg,#16a34a,#15803d);box-shadow:0 10px 24px rgba(22,163,74,0.28);display:none;';
+        tabParseBtn.addEventListener('click', () => this.handleFloatingTabParseClick());
+
         root.appendChild(button);
+        root.appendChild(tabParseBtn);
         document.body.appendChild(root);
         this.floatingButtonRoot = root;
         this.floatingButtonEl = button;
+        this.floatingTabParseEl = tabParseBtn;
         return button;
     }
 
@@ -466,8 +470,22 @@ class JimengMediaCollector {
             button.style.opacity = '1';
             button.style.cursor = 'pointer';
         }
+
+        const isJimengDetail = this.isJimengHost()
+            && !location.pathname.includes('/ai-tool/generate')
+            && !location.pathname.includes('/ai-tool/canvas');
+        if (this.floatingTabParseEl) {
+            if (isJimengDetail && !parsing) {
+                this.floatingTabParseEl.style.display = 'block';
+                this.floatingTabParseEl.disabled = false;
+                button.textContent = '快速去水印下载';
+            } else {
+                this.floatingTabParseEl.style.display = 'none';
+            }
+        }
+
         this.positionFloatingButton();
-        this.floatingButtonRoot.style.display = 'block';
+        this.floatingButtonRoot.style.display = 'flex';
     }
 
     positionFloatingButton() {
@@ -515,7 +533,7 @@ class JimengMediaCollector {
                 extraImageCandidates: this.floatingButtonItem.type === 'image'
                     ? this.floatingButtonItem.extraImageCandidates || []
                     : [],
-                preferBlob: this.floatingButtonItem.type === 'image',
+                preferBlob: false,
                 pageUrl: location.href
             });
 
@@ -531,16 +549,51 @@ class JimengMediaCollector {
         }, 1500);
     }
 
-    // 处理 popup 发来的状态、刷新和下载请求。
+    async handleFloatingTabParseClick() {
+        if (!this.floatingTabParseEl) return;
+
+        const originalText = this.floatingTabParseEl.textContent;
+        this.floatingTabParseEl.disabled = true;
+        this.floatingTabParseEl.textContent = '原画解析中...';
+
+        try {
+            const response = await chrome.runtime.sendMessage({
+                action: 'downloadWithTab',
+                detailUrl: location.href,
+                pageUrl: location.href
+            });
+
+            this.floatingTabParseEl.textContent = response?.success ? '已开始' : '失败';
+        } catch {
+            this.floatingTabParseEl.textContent = '失败';
+        }
+
+        setTimeout(() => {
+            if (!this.floatingTabParseEl) return;
+            this.floatingTabParseEl.disabled = false;
+            this.floatingTabParseEl.textContent = originalText;
+        }, 1500);
+    }
+
     handleMessage(request, sendResponse) {
         try {
             if (request.action === 'getStatus') {
+                if (this.isDreaminaHost() && this.getPageStrategy().mediaType === 'image') {
+                    const hasOriginal = this.mediaItems.some(item =>
+                        item.type === 'image' && (item.url?.includes('aigc_resize:0:0') || item.url?.includes('aigc_resize_0_0'))
+                    );
+                    if (!hasOriginal && !this.officialWorkDetailData) {
+                        this.waitAndRescanForDreamina(sendResponse);
+                        return;
+                    }
+                    this.scanMedia();
+                }
                 sendResponse(this.getStatus());
                 return;
             }
 
-            if (request.action === 'refresh') {
-                this.refreshAndReply(sendResponse);
+            if (request.action === 'startTabParse') {
+                this.handleTabParse(sendResponse);
                 return;
             }
 
@@ -561,18 +614,40 @@ class JimengMediaCollector {
         }
     }
 
-    async refreshAndReply(sendResponse) {
-        this.detailDataHydrated = false;
-        try {
-            await this.withTimeout(this.refreshActiveDetailData({ force: true }), 2500);
-        } catch {}
+    async waitAndRescanForDreamina(sendResponse) {
+        const start = Date.now();
+        const maxWait = 1500;
+        const interval = 150;
+        while (Date.now() - start < maxWait) {
+            await new Promise(r => setTimeout(r, interval));
+            if (this.officialWorkDetailData) break;
+        }
+        this.scanMedia();
+        sendResponse(this.getStatus());
+    }
 
+    async handleTabParse(sendResponse) {
         try {
+            await this.withTimeout(this.refreshActiveDetailData({ force: true }), 3000);
             this.detailDataHydrated = true;
             this.scanMedia();
-            sendResponse(this.getStatus());
+
+            const status = this.getStatus();
+            chrome.runtime.sendMessage({
+                action: 'tabParseComplete',
+                success: status.supported && status.mediaItems.length > 0,
+                mediaItems: status.mediaItems,
+                error: status.supported ? null : '当前页面不支持'
+            });
+
+            sendResponse({ success: true });
         } catch (error) {
-            sendResponse({ success: false, error: error?.message || '刷新失败' });
+            chrome.runtime.sendMessage({
+                action: 'tabParseComplete',
+                success: false,
+                error: error?.message || '解析失败'
+            });
+            sendResponse({ success: false, error: error?.message || '解析失败' });
         }
     }
 
@@ -588,7 +663,24 @@ class JimengMediaCollector {
             this.rawTextVideoCandidatesCacheKey = '';
         }
 
-        const html = document.documentElement?.innerHTML || '';
+        let html = '';
+
+        if (this.isJimengHost()) {
+            const strategy = this.getPageStrategy();
+            if (strategy.supported && !strategy.isGeneratePage) {
+                const detailContainer = document.querySelector('[role="dialog"], [aria-modal="true"], [class*="detail"][class*="modal"], [class*="detail"][class*="drawer"]');
+                if (detailContainer) {
+                    html = detailContainer.innerHTML || '';
+                } else {
+                    html = document.documentElement?.innerHTML || '';
+                }
+            } else {
+                html = document.documentElement?.innerHTML || '';
+            }
+        } else {
+            html = document.documentElement?.innerHTML || '';
+        }
+
         const normalized = this.normalizeRawText(html);
 
         this.rawTextMediaCache = { normalized };
@@ -601,6 +693,7 @@ class JimengMediaCollector {
             ? String(text)
                 .replace(/\\u002F/g, '/')
                 .replace(/\\\\/g, '')
+                .replace(/\\\//g, '/')
                 .replace(/\\"/g, '"')
             : '';
     }
@@ -684,7 +777,8 @@ class JimengMediaCollector {
             this.rawTextImageCandidatesCache = {
                 coverUrlMap: [],
                 coverUrl: [],
-                largeImages: []
+                largeImages: [],
+                originalImage: []
             };
             this.rawTextImageCandidatesCacheKey = cacheKey;
             return [];
@@ -693,10 +787,46 @@ class JimengMediaCollector {
         this.rawTextImageCandidatesCache = {
             coverUrlMap: this.extractImageCandidatesFromText('coverUrlMap', normalized, { sourcePrefix: 'raw-text', strategy }),
             coverUrl: this.extractImageCandidatesFromText('coverUrl', normalized, { sourcePrefix: 'raw-text', strategy }),
-            largeImages: this.extractImageCandidatesFromText('largeImages', normalized, { sourcePrefix: 'raw-text', strategy })
+            largeImages: this.extractImageCandidatesFromText('largeImages', normalized, { sourcePrefix: 'raw-text', strategy }),
+            originalImage: this.extractOriginalImageFromText(normalized, { sourcePrefix: 'raw-text', strategy })
         };
         this.rawTextImageCandidatesCacheKey = cacheKey;
         return this.rawTextImageCandidatesCache[level] || [];
+    }
+
+    extractDreaminaOriginalImage() {
+        if (!this.isDreaminaHost()) return [];
+        const strategy = this.getPageStrategy();
+        if (strategy.mediaType !== 'image') return [];
+        const html = document.documentElement.innerHTML || '';
+        if (!html) return [];
+        return this.extractOriginalImageFromText(html, { sourcePrefix: 'dreamina-raw' });
+    }
+
+    extractOriginalImageFromText(normalized, { sourcePrefix = 'raw-text', strategy = this.getPageStrategy() } = {}) {
+        if (!normalized) return [];
+
+        const candidates = [];
+        const add = (url, source) => {
+            const value = this.normalizeUrl(url);
+            if (!value || !this.isValidMediaUrl(value, 'image')) return;
+            if (!value.includes('aigc_resize:0:0') && !value.includes('aigc_resize_0_0')) return;
+            candidates.push({ url: value, source });
+        };
+
+        const originalImageRegex = /https?:\/\/[^"\s]+~tplv-[^"\s]*aigc_resize:0:0[^"\s]*/gi;
+        let match;
+        while ((match = originalImageRegex.exec(normalized))) {
+            add(match[0], `${sourcePrefix}-originalImage-0`);
+        }
+
+        const seen = new Set();
+        return candidates.filter((item) => {
+            const key = this.normalizeUrl(item?.url);
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
     }
 
     extractImageCandidatesFromText(level, normalized, { sourcePrefix = 'raw-text', strategy = this.getPageStrategy() } = {}) {
@@ -797,7 +927,6 @@ class JimengMediaCollector {
         });
     }
 
-    // 返回当前页面的解析状态快照。
     getStatus() {
         this.syncPageState();
         const strategy = this.getPageStrategy();
@@ -814,7 +943,6 @@ class JimengMediaCollector {
         };
     }
 
-    // 判断当前页面是否支持解析。
     isJimengHost() {
         return location.hostname.includes('jimeng.jianying.com');
     }
@@ -829,7 +957,6 @@ class JimengMediaCollector {
         return '当前页面';
     }
 
-    // 根据路由和查询参数推断当前页的媒体策略。
     getPageStrategy() {
         const isJimeng = this.isJimengHost();
         const isDreamina = this.isDreaminaHost();
@@ -850,7 +977,6 @@ class JimengMediaCollector {
         const videoType = workDetailType.includes('video') || itemType === '53' || itemType === '210';
 
         if (isGenerateRoute) {
-            // generate/canvas 页面：URL 不变，靠弹窗 DOM 取媒体，不做结构化提取
             const modal = document.querySelector('.lv-modal-wrapper');
             if (!modal) return { supported: false, mediaType: null, label: `${siteLabel} generate (no modal)` };
             const hasVideo = !!modal.querySelector('video');
@@ -872,7 +998,6 @@ class JimengMediaCollector {
         return { supported: true, mediaType: null, label: `${siteLabel} detail page` };
     }
 
-    // 从 URL 中提取作品 ID，兼容不同站点路由格式。
     getPublishedItemId(url = location.href) {
         try {
             const parsed = new URL(url, location.href);
@@ -1008,7 +1133,6 @@ class JimengMediaCollector {
         return false;
     }
 
-    // 扫描当前详情主媒体，只保留一个命中的下载项。
     scanMedia() {
         this.syncPageState();
         const strategy = this.getPageStrategy();
@@ -1043,9 +1167,11 @@ class JimengMediaCollector {
             this.lastDetailMediaKey = detailMediaKey;
         } else if (currentDetailIdentity && !this.lastDetailIdentity) {
             this.lastDetailIdentity = currentDetailIdentity;
-        } else if (!isJimeng && strategy.mediaType === 'image' && !this.hasMatchingRouterData(strategy, detailMediaKey, { strict: true })) {
+        } else if (!isJimeng && strategy.mediaType === 'image' && !this.officialWorkDetailData && !this.hasMatchingRouterData(strategy, detailMediaKey, { strict: true })) {
             this.scheduleDetailHydration(80);
-        } else if (!isJimeng && strategy.mediaType !== 'image' && !this.hasMatchingRouterData(strategy, detailMediaKey)) {
+        } else if (!isJimeng && strategy.mediaType !== 'image' && !this.officialWorkDetailData && !this.hasMatchingRouterData(strategy, detailMediaKey)) {
+            this.scheduleDetailHydration(80);
+        } else if (!isJimeng && strategy.mediaType === 'image' && !this.officialWorkDetailData) {
             this.scheduleDetailHydration(80);
         }
 
@@ -1176,7 +1302,6 @@ class JimengMediaCollector {
         return false;
     }
 
-    // generate 页面：从弹窗 DOM 直接取主媒体，不做结构化提取。
     collectGenerateModalMedia(strategy) {
         const modal = document.querySelector('.lv-modal-wrapper');
         if (!modal) return [];
@@ -1190,7 +1315,6 @@ class JimengMediaCollector {
         return url ? [this.createItem('image', url, 1, 'img-currentSrc')] : [];
     }
 
-    // 视频页优先返回当前详情可用的最佳结构化链接，DOM 仅作兜底。
     collectVideos() {
         const routerCandidates = this.collectVideoCandidatesFromRouterData();
         const rawTextCandidates = this.extractVideoCandidatesFromRawText();
@@ -1202,7 +1326,6 @@ class JimengMediaCollector {
         return selected ? [this.createItem('video', selected.url, 1, selected.source)] : [];
     }
 
-    // 图片页优先返回当前详情可用的最佳结构化链接，DOM 仅作兜底。
     collectImages() {
         const image = this.getMainImageElements()[0] || null;
         const previewUrl = this.normalizeUrl(image?.currentSrc || image?.src || image?.getAttribute('src'));
@@ -1223,6 +1346,7 @@ class JimengMediaCollector {
         };
         const candidatePool = isJimeng
             ? [
+                ...this.extractImageCandidatesFromRawText('originalImage'),
                 ...collectJimengStructuredLevel('coverUrlMap'),
                 ...this.extractImageCandidatesFromRawText('coverUrlMap'),
                 ...collectJimengStructuredLevel('coverUrl'),
@@ -1232,6 +1356,7 @@ class JimengMediaCollector {
                 ...this.collectImageCandidatesFromDom(image)
             ]
             : [
+                ...this.extractDreaminaOriginalImage(),
                 ...this.collectImageCandidatesForLevel('largeImages', assetKey, { strictRouter: routerStrict }),
                 ...this.collectImageCandidatesForLevel('coverUrlMap', assetKey, { strictRouter: routerStrict }),
                 ...this.collectImageCandidatesForLevel('coverUrl', assetKey, { strictRouter: routerStrict }),
@@ -1321,7 +1446,8 @@ class JimengMediaCollector {
             rest.push(entry);
         });
 
-        return [...primary, ...rest].slice(0, 24);
+        const maxCandidates = this.isDreaminaHost() && this.officialWorkDetailData ? 2 : 6;
+        return [...primary, ...rest].slice(0, maxCandidates);
     }
 
     collectImageCandidatesForLevel(level, assetKey = '', { strictRouter = false } = {}) {
@@ -1777,7 +1903,7 @@ class JimengMediaCollector {
         }
 
         const documentPayload = this.getCurrentDocumentRouterPayload(strategy, { force });
-        if (documentPayload) {
+        if (documentPayload && !(this.isDreaminaHost() && strategy.mediaType === 'image' && !this.officialWorkDetailData)) {
             this.debug('refresh-active-detail-data-document-hit', { source: 'document-router', cacheKey });
             return this.officialWorkDetailData || documentPayload;
         }
@@ -1795,7 +1921,17 @@ class JimengMediaCollector {
         }
 
         try {
-            await this.fetchOfficialWorkDetail(cacheKey);
+            if (this.isDreaminaHost()) {
+                try {
+                    await this.withTimeout(this.fetchOfficialWorkDetail(cacheKey), 3000);
+                } catch (error) {
+                    this.debug('official-api-timeout', { error: error?.message });
+                }
+                if (this.officialWorkDetailData) {
+                    this.debug('refresh-active-detail-data-official-hit', { source: 'official-api', cacheKey });
+                    return this.officialWorkDetailData;
+                }
+            }
 
             const currentDocumentPayload = this.getCurrentDocumentRouterPayload(strategy, { force: true });
             if (currentDocumentPayload) {
@@ -1815,19 +1951,22 @@ class JimengMediaCollector {
                 this.invalidateBridgedWorkDetail(matchedBridge.reason || 'refresh-bridge-mismatch');
             }
 
-            const response = await fetch(location.href, {
-                method: 'GET',
-                credentials: 'include',
-                cache: 'no-store',
-                headers: { 'Accept': 'text/html,application/xhtml+xml' }
-            });
-            if (!response.ok) return null;
-            const html = await response.text();
-            const payloads = this.extractAllRouterDataFromText(html);
-            const payload = payloads.find((item) => this.hasPayloadMatchingCurrentDetail(item, strategy)) || null;
-            if (payload) {
-                this.debug('refresh-active-detail-data-html-hit', { source: 'html-router', cacheKey });
-                return this.officialWorkDetailData || payload;
+            if (this.isJimengHost()) {
+                const response = await fetch(location.href, {
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    headers: { 'Accept': 'text/html,application/xhtml+xml' }
+                });
+                if (response.ok) {
+                    const html = await response.text();
+                    const payloads = this.extractAllRouterDataFromText(html);
+                    const payload = payloads.find((item) => this.hasPayloadMatchingCurrentDetail(item, strategy)) || null;
+                    if (payload) {
+                        this.debug('refresh-active-detail-data-html-hit', { source: 'html-router', cacheKey });
+                        return this.officialWorkDetailData || payload;
+                    }
+                }
             }
         } catch {}
         return this.officialWorkDetailData || null;
@@ -1958,7 +2097,6 @@ class JimengMediaCollector {
         return payloads;
     }
 
-    // 图片比较规则：先看资源层级，再看尺寸。
     compareImages(a, b) {
         if (a.tier !== b.tier) return b.tier - a.tier;
         if ((a.sourcePriority || 0) !== (b.sourcePriority || 0)) return (b.sourcePriority || 0) - (a.sourcePriority || 0);
@@ -1966,7 +2104,6 @@ class JimengMediaCollector {
         return b.url.length - a.url.length;
     }
 
-    // 视频比较规则：先看来源优先级，再看清晰度、码率和 ds。
     compareVideos(a, b) {
         if (a.sourcePriority !== b.sourcePriority) return b.sourcePriority - a.sourcePriority;
         if (a.heightRank !== b.heightRank) return b.heightRank - a.heightRank;
@@ -1976,7 +2113,6 @@ class JimengMediaCollector {
         return b.url.length - a.url.length;
     }
 
-    // 解析图片 URL 的资源层级、尺寸和疑似水印信息。
     describeImageUrl(url) {
         const assetKey = this.extractAssetKey(url);
         const lower = url.toLowerCase();
@@ -1984,9 +2120,10 @@ class JimengMediaCollector {
         const host = parsed.hostname.toLowerCase();
         const leaf = (parsed.pathname.split('/').pop() || '').toLowerCase();
         const variantPart = leaf.includes('~tplv-') ? leaf.split('~tplv-')[1] : '';
-        const resizeMatch = variantPart.match(/aigc_resize:(\d{2,5}):(\d{2,5})/);
+        const resizeMatch = variantPart.match(/aigc_resize:(\d{1,5}):(\d{1,5})/);
         const width = resizeMatch ? Number(resizeMatch[1]) : 0;
         const height = resizeMatch ? Number(resizeMatch[2]) : 0;
+        const isOriginalImage = width === 0 && height === 0 && resizeMatch;
         const variantType = resizeMatch
             ? 'aigc_resize'
             : variantPart.includes('uname_busi_aigc_mark_new')
@@ -2005,7 +2142,8 @@ class JimengMediaCollector {
             || /(watermark|mark_new|aigc_mark|busi_mark)/.test(lower);
 
         let tier = 0;
-        if (hostKind === 'sign' && variantType === 'aigc_resize' && (width >= 2400 || height >= 2400)) tier = 5;
+        if (isOriginalImage) tier = 6;
+        else if (hostKind === 'sign' && variantType === 'aigc_resize' && (width >= 2400 || height >= 2400)) tier = 5;
         else if (hostKind === 'sign' && variantType === 'aigc_resize') tier = 4;
         else if (hostKind === 'sign' && !watermarkedLikely) tier = 3;
         else if (!watermarkedLikely) tier = 2;
@@ -2018,13 +2156,12 @@ class JimengMediaCollector {
             variantType,
             width,
             height,
-            area: width * height,
+            area: isOriginalImage ? Infinity : width * height,
             watermarkedLikely,
             tier
         };
     }
 
-    // 解析视频 URL 的分组键和质量信息。
     describeVideoUrl(url) {
         const parsed = new URL(url);
         const segments = parsed.pathname.split('/').filter(Boolean);
@@ -2044,6 +2181,7 @@ class JimengMediaCollector {
 
     getImageSourcePriority(source) {
         if (!source || typeof source !== 'string') return 0;
+        if (source.includes('-originalImage-')) return 70;
         if (/^official-/.test(source) && source.includes('-largeImages')) return 65;
         if (/^official-/.test(source) && source.includes('-coverUrlMap-')) {
             const size = Number((source.match(/-coverUrlMap-(\d+)/) || [])[1] || 0);
@@ -2094,7 +2232,6 @@ class JimengMediaCollector {
         return 0;
     }
 
-    // 统一生成弹窗里展示的媒体项。
     createItem(type, url, index, source, extras = null) {
         return {
             id: `${type}-${index}-${this.hash(url)}`,
@@ -2106,7 +2243,6 @@ class JimengMediaCollector {
         };
     }
 
-    // 生成下载时使用的文件名。
     buildFilename(type, url, index) {
         const ext = this.guessExtension(url, type);
         const title = this.getWorkTitle();
@@ -2129,7 +2265,6 @@ class JimengMediaCollector {
         return type === 'video' ? 'mp4' : 'webp';
     }
 
-    // 把 source 转成用户友好的画质标签。
     getQualityLabel(source, url = '') {
         const s = String(source || '');
         if (s.includes('coverUrlMap-0') || (url || '').includes('aigc_resize_0_0') || (url || '').includes('aigc_resize:0:0')) return '原图';
@@ -2146,7 +2281,6 @@ class JimengMediaCollector {
         return '标准画质';
     }
 
-    // 从详情页 DOM 提取作品标题或提示词前缀。
     getWorkTitle() {
         const selectors = [
             '[class*="prompt-value-text"]',
@@ -2164,7 +2298,6 @@ class JimengMediaCollector {
         return '';
     }
 
-    // 解析 srcset，提取其中的 URL 部分。
     parseSrcset(srcset) {
         if (!srcset) return [];
         return srcset
@@ -2173,7 +2306,6 @@ class JimengMediaCollector {
             .filter(Boolean);
     }
 
-    // 单页应用路由变化但没收到主世界消息时，主动清空旧页面状态。
     syncPageState() {
         if (this.lastPageUrl === location.href) return;
         const previousUrl = this.lastPageUrl;
@@ -2190,7 +2322,6 @@ class JimengMediaCollector {
         this.scheduleDetailHydration(120);
     }
 
-    // 收到主世界的导航消息后，立即重置状态并触发重新解析。
     handlePageChange(url) {
         if (!url || url === this.lastPageUrl) return;
         const previousUrl = this.lastPageUrl;
@@ -2218,26 +2349,7 @@ class JimengMediaCollector {
     }
 
     maybeForceHardNavigation(nextUrl, previousUrl = this.lastPageUrl, reason = 'unknown') {
-        if (!this.isJimengHost()) return false;
-        if (!this.isJimengDetailUrl(nextUrl)) return false;
-        if (this.isJimengDetailUrl(previousUrl)) return false;
-
-        const key = this.makeHardNavKey(nextUrl);
-        try {
-            const lastTs = Number(sessionStorage.getItem(key) || 0);
-            if (lastTs && (Date.now() - lastTs) < HARD_NAV_SESSION_TTL) {
-                return false;
-            }
-            sessionStorage.setItem(key, String(Date.now()));
-        } catch {
-            return false;
-        }
-
-        this.debug('force-hard-navigation', { reason, previousUrl, nextUrl });
-        setTimeout(() => {
-            window.location.replace(nextUrl);
-        }, 0);
-        return true;
+        return false;
     }
 
     isJimengDetailUrl(url) {
@@ -2267,7 +2379,6 @@ class JimengMediaCollector {
         this.scheduleDetailHydration(40);
     }
 
-    // 获取当前详情层里最像主视频的元素。
     getMainVideoElements() {
         const candidates = this.filterToDetailLayerMediaElements(
             Array.from(document.querySelectorAll('video')).filter((video) => this.isLikelyMainVideo(video))
@@ -2291,7 +2402,6 @@ class JimengMediaCollector {
         return true;
     }
 
-    // 只保留主视频对应的 source 节点。
     getMainVideoSourceElements() {
         const mainVideos = new Set(this.getMainVideoElements());
         return Array.from(document.querySelectorAll('video source[src]')).filter((source) => {
@@ -2300,7 +2410,6 @@ class JimengMediaCollector {
         });
     }
 
-    // 获取当前详情层里最像主图的元素。
     getMainImageElements() {
         const candidates = this.filterToDetailLayerMediaElements(
             Array.from(document.querySelectorAll('img')).filter((img) => this.isLikelyMainImage(img))
@@ -2319,7 +2428,6 @@ class JimengMediaCollector {
         return detailLayerElements.length ? detailLayerElements : filtered;
     }
 
-    // 从多个候选媒体元素里只保留详情层里尺寸最大的那个。
     pickPrimaryMediaElements(elements) {
         if (!elements.length) return [];
         const visible = elements.filter((element) => {
@@ -2360,14 +2468,12 @@ class JimengMediaCollector {
         return Math.abs(centerX - viewportX) + Math.abs(centerY - viewportY);
     }
 
-    // 判断元素是否位于详情弹层 / 弹窗 / 抽屉等容器里。
     hasDetailContainerAncestor(element) {
         return Boolean(
             element.closest('[role="dialog"], [aria-modal="true"], [data-testid*="detail"], [class*="detail"], [class*="modal"], [class*="dialog"], [class*="drawer"]')
         );
     }
 
-    // 判断元素祖先是否位于固定定位覆盖层中。
     hasFixedOverlayAncestor(element) {
         let node = element.parentElement;
         for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
@@ -2377,7 +2483,6 @@ class JimengMediaCollector {
         return false;
     }
 
-    // 粗筛主图：过小或不可见的图片不参与详情页解析。
     isLikelyMainImage(img) {
         const rect = img.getBoundingClientRect();
         const width = Math.max(rect.width, img.naturalWidth || 0, img.width || 0);
@@ -2387,7 +2492,6 @@ class JimengMediaCollector {
         return true;
     }
 
-    // 粗筛主视频：过小或不可见的视频不参与详情页解析。
     isLikelyMainVideo(video) {
         const rect = video.getBoundingClientRect();
         const width = Math.max(rect.width, video.videoWidth || 0, video.clientWidth || 0);
@@ -2397,7 +2501,6 @@ class JimengMediaCollector {
         return true;
     }
 
-    // 统一做 URL 规范化，过滤 blob/data 这类不可直接下载的地址。
     normalizeUrl(value) {
         if (!value || typeof value !== 'string') return null;
         if (value.startsWith('blob:') || value.startsWith('data:')) return null;
@@ -2408,7 +2511,6 @@ class JimengMediaCollector {
         }
     }
 
-    // 用扩展名和路径关键字做最基础的媒体 URL 校验。
     isValidMediaUrl(url, type) {
         if (!url) return false;
         const lower = url.toLowerCase();
@@ -2422,7 +2524,6 @@ class JimengMediaCollector {
         return /\.(jpg|jpeg|png|webp|gif|bmp)(\?|$)/.test(lower) || lower.includes('/image/');
     }
 
-    // 取出媒体 URL 中 `~tplv-` 之前的素材 key。
     extractAssetKey(url) {
         if (!url) return null;
         try {
@@ -2434,7 +2535,6 @@ class JimengMediaCollector {
         }
     }
 
-    // 为媒体项生成稳定且足够短的本地 ID。
     hash(value) {
         let hash = 0;
         for (let i = 0; i < value.length; i += 1) {

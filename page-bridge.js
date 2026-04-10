@@ -1,23 +1,12 @@
-// 运行在页面主世界，负责把单页应用路由变化和当前详情数据通知给 content script。
 (() => {
     if (window.__jimengParserBridgeInstalled) return;
     window.__jimengParserBridgeInstalled = true;
 
     const navigationType = 'jimeng-page-change';
     const workDetailType = 'jimeng-work-detail';
-    const debugEnabled = false;
     let lastUrl = location.href;
     let lastWorkDetailSignature = '';
     let snapshotTimer = 0;
-
-    const debug = (event, details = {}) => {
-        if (!debugEnabled) return;
-        console.debug('[seedance-bridge]', event, {
-            ...details,
-            href: location.href,
-            ts: Date.now()
-        });
-    };
 
     const isJimengApiUrl = (value) => {
         if (!value || typeof value !== 'string') return false;
@@ -314,23 +303,12 @@
 
         const targetId = getPublishedItemId();
         if (targetId && !isMatchingWorkDetail(workDetail, targetId) && !allowFallback) {
-            debug('skip-bridge-publish-mismatch', {
-                sourceKind,
-                targetId,
-                candidateIds: getWorkDetailIdCandidates(workDetail)
-            });
             return;
         }
 
         const envelope = buildWorkDetailEnvelope(workDetail, sourceKind);
         if (!force && envelope.signature && envelope.signature === lastWorkDetailSignature) return;
         lastWorkDetailSignature = envelope.signature;
-        debug('publish-work-detail', {
-            sourceKind,
-            publishedItemId: envelope.publishedItemId,
-            detailMediaKey: envelope.detailMediaKey,
-            signature: envelope.signature
-        });
         window.postMessage(envelope, '*');
     };
 
@@ -379,11 +357,6 @@
             || findWorkDetailDeep(data || payload);
         if (!workDetail) return;
 
-        debug('publish-payload-work-detail', {
-            sourceKind,
-            targetId,
-            candidateIds: getWorkDetailIdCandidates(workDetail)
-        });
         publishWorkDetail({ force: true, workDetailOverride: workDetail, sourceKind, allowFallback: false });
     };
 
@@ -395,12 +368,14 @@
         try {
             const response = await responsePromise;
             if (!response || !shouldInspectJsonResponseUrl(url)) return response;
-            response.clone().json()
-                .then((payload) => publishPayloadWorkDetail(payload, isJimengApiUrl(url) ? 'bridge-api' : 'bridge-json'))
-                .catch(() => {});
+            if (response.ok) {
+                response.clone().json()
+                    .then((payload) => publishPayloadWorkDetail(payload, isJimengApiUrl(url) ? 'bridge-api' : 'bridge-json'))
+                    .catch(() => {});
+            }
             return response;
         } catch (error) {
-            throw error;
+            return Promise.reject(error);
         }
     };
 
@@ -444,14 +419,8 @@
 
     const notifyNavigation = () => {
         if (location.href === lastUrl) return;
-        const previousUrl = lastUrl;
         lastUrl = location.href;
         lastWorkDetailSignature = '';
-        debug('navigation', {
-            previousUrl,
-            nextUrl: lastUrl,
-            publishedItemId: getPublishedItemId(lastUrl)
-        });
         window.postMessage({ type: navigationType, url: lastUrl }, '*');
         burstSnapshot();
     };
@@ -474,7 +443,9 @@
         return result;
     };
 
-    window.fetch = function(...args) {
+    const isJimengHost = location.hostname.includes('jimeng.jianying.com');
+
+    window.fetch = isJimengHost ? function(...args) {
         const request = args[0];
         const requestUrl = typeof request === 'string'
             ? request
@@ -482,21 +453,23 @@
         const result = originalFetch.apply(this, args);
         if (!shouldInspectJsonResponseUrl(requestUrl)) return result;
         return interceptJsonResponse(result, requestUrl);
-    };
+    } : originalFetch;
 
-    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-        this.__jimengBridgeUrl = typeof url === 'string' ? url : '';
-        return originalXhrOpen.call(this, method, url, ...rest);
-    };
+    if (isJimengHost) {
+        XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+            this.__jimengBridgeUrl = typeof url === 'string' ? url : '';
+            return originalXhrOpen.call(this, method, url, ...rest);
+        };
 
-    XMLHttpRequest.prototype.send = function(body) {
-        this.addEventListener('load', () => {
-            if (!isJimengApiUrl(this.__jimengBridgeUrl)) return;
-            const payload = parseJsonPayload(this.responseType && this.responseType !== 'text' ? this.response : this.responseText);
-            if (payload) publishApiWorkDetail(payload);
-        });
-        return originalXhrSend.call(this, body);
-    };
+        XMLHttpRequest.prototype.send = function(body) {
+            this.addEventListener('load', () => {
+                if (!isJimengApiUrl(this.__jimengBridgeUrl)) return;
+                const payload = parseJsonPayload(this.responseType && this.responseType !== 'text' ? this.response : this.responseText);
+                if (payload) publishApiWorkDetail(payload);
+            });
+            return originalXhrSend.call(this, body);
+        };
+    }
 
     installRouterDataHook();
 
